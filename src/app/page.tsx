@@ -1,69 +1,123 @@
-import Image from "next/image";
+import { StudyForm } from "@/components/study-form";
+import { AuroraMascot } from "@/components/aurora-mascot";
+import { InstitutionalUploadForm } from "@/components/institutional-upload-form";
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+    <main className="relative min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-x-0 top-0 mx-auto h-176 max-w-7xl bg-[radial-gradient(circle_at_top,rgba(244,207,122,0.18),transparent_30%),radial-gradient(circle_at_70%_14%,rgba(88,211,255,0.18),transparent_24%),radial-gradient(circle_at_18%_28%,rgba(138,125,255,0.18),transparent_22%)] blur-3xl" />
+
+      <div className="relative mx-auto flex w-full max-w-7xl flex-col gap-8">
+        <section className="overflow-hidden rounded-[36px] border border-white/12 bg-[linear-gradient(135deg,rgba(7,17,31,0.94),rgba(13,24,46,0.76))] p-6 text-white shadow-[0_36px_120px_rgba(4,8,18,0.55)] backdrop-blur md:p-8">
+          <div className="grid gap-8 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+            <div className="space-y-6">
+              <div className="inline-flex items-center gap-2 rounded-full border border-[rgba(244,207,122,0.28)] bg-[rgba(244,207,122,0.08)] px-4 py-2 text-xs uppercase tracking-[0.38em] text-[#f4cf7a]">
+                Asistente académico
+              </div>
+
+              <div className="space-y-4">
+                <h1
+                  className="max-w-4xl text-5xl leading-tight text-[#fff7e5] sm:text-6xl lg:text-7xl"
+                  style={{ fontFamily: "var(--font-display)" }}
+                >
+                  Bienvenid@
+                </h1>
+                <p className="max-w-2xl text-base leading-8 text-slate-200/90 sm:text-lg">
+                  Sube un PDF o pega tu texto.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-3">
+                <Pill text="Resumen ejecutivo" />
+                <Pill text="Preguntas de práctica" />
+                <Pill text="Tarjetas de repaso" />
+                <Pill text="Recomendaciones de estudio" />
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+              <Metric label="Entrada" value="texto + PDF" accent="sky" />
+              <Metric label="Salida" value="4 bloques" accent="gold" />
+              <Metric label="Tiempo" value="segundos" accent="violet" />
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <FeatureCard
+            eyebrow="01"
+            title="Captura"
+            description="Pega apuntes o carga un PDF para iniciar el análisis de inmediato."
+          />
+          <FeatureCard
+            eyebrow="02"
+            title="Organiza"
+            description="El contenido se ordena en bloques claros para facilitar la comprensión."
+          />
+          <FeatureCard
+            eyebrow="03"
+            title="Consolida"
+            description="Repasa, responde preguntas y afianza los conceptos con método."
+          />
+        </section>
+
+        <StudyForm />
+
+        <InstitutionalUploadForm />
+      </div>
+
+      <AuroraMascot />
+    </main>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  accent,
+}: Readonly<{ label: string; value: string; accent: "gold" | "sky" | "violet" }>) {
+  const accentClasses = {
+    gold: "from-[#f4cf7a]/28 via-[#f4cf7a]/10 to-transparent text-[#fff0c6]",
+    sky: "from-[#58d3ff]/24 via-[#58d3ff]/10 to-transparent text-[#d7f4ff]",
+    violet: "from-[#8a7dff]/24 via-[#8a7dff]/10 to-transparent text-[#ece6ff]",
+  };
+
+  return (
+    <div className={`rounded-3xl border border-white/10 bg-linear-to-br px-4 py-4 shadow-lg ${accentClasses[accent]}`}>
+      <p className="text-[0.65rem] uppercase tracking-[0.32em] text-white/55">{label}</p>
+      <p className="mt-3 text-2xl text-white" style={{ fontFamily: "var(--font-display)" }}>
+        {value}
+      </p>
     </div>
+  );
+}
+
+function Pill({ text }: Readonly<{ text: string }>) {
+  return (
+    <span className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
+      {text}
+    </span>
+  );
+}
+
+function FeatureCard({
+  eyebrow,
+  title,
+  description,
+}: Readonly<{
+  eyebrow: string;
+  title: string;
+  description: string;
+}>) {
+  return (
+    <article className="rounded-[28px] border border-white/10 bg-[linear-gradient(180deg,rgba(15,23,42,0.82),rgba(7,17,31,0.95))] p-5 text-white shadow-[0_20px_60px_rgba(4,8,18,0.35)] backdrop-blur">
+      <p className="font-mono text-xs uppercase tracking-[0.34em] text-[#f4cf7a]">
+        {eyebrow}
+      </p>
+      <h2 className="mt-3 text-2xl text-[#fff8e7]" style={{ fontFamily: "var(--font-display)" }}>
+        {title}
+      </h2>
+      <p className="mt-3 text-sm leading-7 text-slate-300">{description}</p>
+    </article>
   );
 }
