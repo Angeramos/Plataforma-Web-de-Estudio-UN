@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import OpenAI from "openai";
+
+type ChatMsg = { role: "system" | "user" | "assistant" | "function"; content: string; name?: string };
 import { generateStudyContent } from "@/lib/openai";
 import { getInstitutionalKnowledge } from "@/lib/institutional-knowledge";
 
@@ -31,7 +33,7 @@ export async function POST(request: Request) {
   if (openaiApiKey && openaiApiKey.startsWith("sk-")) {
     try {
       const client = new OpenAI({ apiKey: openaiApiKey });
-      const messages = [
+      const messages: ChatMsg[] = [
         {
           role: "system",
           content:
@@ -46,7 +48,7 @@ export async function POST(request: Request) {
       const resp = await client.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0.4,
-        messages,
+        messages: messages as any,
       });
 
       const reply = resp.choices?.[0]?.message?.content ?? "Lo siento, no obtuve respuesta.";

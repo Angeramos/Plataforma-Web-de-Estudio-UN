@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 
+type ChatMsg = { role: "system" | "user" | "assistant" | "function"; content: string; name?: string };
+
 export interface StudyQuiz {
   question: string;
   options: string[];
@@ -34,20 +36,22 @@ export async function generateStudyContent(
 
   if (openaiClient) {
     try {
+      const messages: ChatMsg[] = [
+        {
+          role: "system",
+          content:
+            "Eres Aurora, una asistente académica en español. Devuelve solo JSON válido con las claves summary, quizzes, flashcards, recommendations y sourceLabel. summary debe ser un párrafo breve y claro. quizzes debe contener exactamente 2 objetos con question, options y answer. flashcards debe contener exactamente 2 objetos con front y back. recommendations debe contener exactamente 4 cadenas. Mantén un tono profesional, útil y pedagógico. Si el usuario escribe una instrucción, respóndela como una asistente académica. Si recibe contenido de apoyo o material institucional adicional, úsalo para elaborar el resumen y las demás secciones.",
+        },
+        {
+          role: "user",
+          content: buildUserMessage(cleanedPrompt, cleanedSourceText, sourceLabel, cleanedInstitutionalContext),
+        },
+      ];
+
       const response = await openaiClient.chat.completions.create({
         model: "gpt-4o-mini",
         temperature: 0.4,
-        messages: [
-          {
-            role: "system",
-            content:
-              "Eres Aurora, una asistente académica en español. Devuelve solo JSON válido con las claves summary, quizzes, flashcards, recommendations y sourceLabel. summary debe ser un párrafo breve y claro. quizzes debe contener exactamente 2 objetos con question, options y answer. flashcards debe contener exactamente 2 objetos con front y back. recommendations debe contener exactamente 4 cadenas. Mantén un tono profesional, útil y pedagógico. Si el usuario escribe una instrucción, respóndela como una asistente académica. Si recibe contenido de apoyo o material institucional adicional, úsalo para elaborar el resumen y las demás secciones.",
-          },
-          {
-            role: "user",
-            content: buildUserMessage(cleanedPrompt, cleanedSourceText, sourceLabel, cleanedInstitutionalContext),
-          },
-        ],
+        messages: messages as any,
       });
 
       const rawContent = response.choices[0]?.message?.content ?? "";
