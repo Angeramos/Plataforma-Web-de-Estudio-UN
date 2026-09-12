@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import type { StudyContent } from "@/lib/openai";
+import { Results } from "@/components/study-results";
 
 export function StudyForm() {
   const [text, setText] = useState("");
@@ -45,6 +46,37 @@ export function StudyForm() {
     }
   }
 
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    function onAuroraOption(evt: any) {
+      const action = evt?.detail?.action as string | undefined;
+      if (!action) return;
+
+      if (action === "showResults") {
+        setTimeout(() => {
+          document.getElementById("aurora-results")?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 120);
+        return;
+      }
+
+      const templates: Record<string, string> = {
+        summary: "Hazme un resumen claro y conciso sobre:",
+        quizzes: "Genera preguntas de práctica sobre:",
+        flashcards: "Crea tarjetas de repaso sobre:",
+        recommendations: "Dame recomendaciones de estudio para:",
+      };
+
+      if (templates[action]) {
+        setText((prev) => (prev && prev.trim().length > 0 ? prev : templates[action] + " "));
+        setTimeout(() => textareaRef.current?.focus(), 60);
+      }
+    }
+
+    window.addEventListener("aurora-option", onAuroraOption as EventListener);
+    return () => window.removeEventListener("aurora-option", onAuroraOption as EventListener);
+  }, []);
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
       <form
@@ -70,6 +102,7 @@ export function StudyForm() {
             Solicitud o texto
           </span>
           <textarea
+            ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
             rows={9}
@@ -110,7 +143,9 @@ export function StudyForm() {
         </button>
       </form>
 
-      {/* Results temporarily removed — will appear in a dedicated view later */}
+      <aside id="aurora-results">
+        <Results result={result} />
+      </aside>
     </div>
   );
 }
