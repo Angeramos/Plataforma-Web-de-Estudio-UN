@@ -22,6 +22,17 @@ export async function POST(request: Request) {
       try {
         if ((f.type === "application/pdf") || (f.name && String(f.name).toLowerCase().endsWith(".pdf"))) {
           const buffer = Buffer.from(await f.arrayBuffer());
+
+          // Ensure DOMMatrix is available in Node for pdfjs used by pdf-parse
+          try {
+            const domMatrixMod = await import("dommatrix").catch(() => null);
+            if (domMatrixMod) {
+              (global as any).DOMMatrix = domMatrixMod.DOMMatrix ?? domMatrixMod.default ?? domMatrixMod;
+            }
+          } catch {
+            // ignore if import fails; we'll try to proceed and catch pdf-parse errors below
+          }
+
           const pdfParseModule = (await import("pdf-parse")) as any;
           const parsed = await (typeof pdfParseModule === "function" ? pdfParseModule(buffer) : pdfParseModule.default ? pdfParseModule.default(buffer) : pdfParseModule(buffer));
           extractedText = [prompt, parsed?.text].filter(Boolean).join(" \n").trim();
