@@ -29,11 +29,21 @@ export function StudyForm() {
         body: formData,
       });
 
-      if (!response.ok) {
-        throw new Error("No se pudo generar el contenido.");
+      const body = await response.text();
+      let parsed: any = null;
+      try {
+        parsed = body ? JSON.parse(body) : null;
+      } catch {
+        parsed = null;
       }
 
-      const data = (await response.json()) as StudyContent;
+      if (!response.ok) {
+        const serverMessage = parsed?.error ?? parsed?.message ?? "No se pudo generar el contenido.";
+        setResult(null);
+        throw new Error(serverMessage);
+      }
+
+      const data = (parsed ?? {}) as StudyContent;
       setResult(data);
     } catch (submitError) {
       setError(

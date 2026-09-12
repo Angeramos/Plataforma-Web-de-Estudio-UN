@@ -14,16 +14,24 @@ export async function POST(request: Request) {
     let extractedText = "";
     let sourceLabel = prompt ? "solicitud del usuario" : "tema solicitado";
 
-    if (file instanceof File && file.size > 0) {
-      sourceLabel = file.name;
+    const isFileLike = file && (typeof (file as any).arrayBuffer === "function" || typeof (file as any).size === "number");
+    if (isFileLike) {
+      const f = file as any;
+      sourceLabel = f.name ?? sourceLabel;
 
-      if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
-        const buffer = Buffer.from(await file.arrayBuffer());
-        const pdfParseModule = (await import("pdf-parse")) as any;
-        const parsed = await (typeof pdfParseModule === "function" ? pdfParseModule(buffer) : pdfParseModule.default ? pdfParseModule.default(buffer) : pdfParseModule(buffer));
-        extractedText = [prompt, parsed?.text].filter(Boolean).join(" \n").trim();
-      } else {
-        extractedText = await file.text();
+      try {
+        if ((f.type === "application/pdf") || (f.name && String(f.name).toLowerCase().endsWith(".pdf"))) {
+          const buffer = Buffer.from(await f.arrayBuffer());
+          const pdfParseModule = (await import("pdf-parse")) as any;
+          const parsed = await (typeof pdfParseModule === "function" ? pdfParseModule(buffer) : pdfParseModule.default ? pdfParseModule.default(buffer) : pdfParseModule(buffer));
+          extractedText = [prompt, parsed?.text].filter(Boolean).join(" \n").trim();
+        } else {
+          // try to read as text if it's not a PDF
+          extractedText = await f.text();
+        }
+      } catch (pdfErr: any) {
+        const msg = pdfErr?.message ?? String(pdfErr ?? "Error al leer el archivo");
+        return NextResponse.json({ error: `Error al procesar el archivo ${sourceLabel}: ${msg}` }, { status: 500 });
       }
     }
 
