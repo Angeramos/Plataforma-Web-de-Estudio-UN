@@ -8,15 +8,31 @@ import { getInstitutionalKnowledge } from "@/lib/institutional-knowledge";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
-  const formData = await request.formData();
-  const prompt = String(formData.get("text") ?? "").trim();
-  const file = formData.get("file");
+  // Accept either JSON or form-data
+  let prompt = "";
+  let file: File | null = null;
+
+  try {
+    const ctype = request.headers.get("content-type") || "";
+    if (ctype.includes("application/json")) {
+      const body = await request.json();
+      prompt = String(body.text ?? "").trim();
+    } else {
+      const formData = await request.formData();
+      prompt = String(formData.get("text") ?? "").trim();
+      const f = formData.get("file");
+      if (f instanceof File) file = f;
+    }
+  } catch (err) {
+    prompt = "";
+  }
+
   const effectivePrompt = prompt || "Responde de forma clara y académica a la solicitud del usuario.";
 
   let extractedText = "";
   let sourceLabel = prompt ? "solicitud del usuario" : "tema solicitado";
 
-  if (file instanceof File && file.size > 0) {
+  if (file && file.size > 0) {
     sourceLabel = file.name;
 
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
