@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
           // Ensure DOMMatrix is available in Node for pdfjs used by pdf-parse
           try {
-            const domMatrixMod = await import("dommatrix").catch(() => null);
+            const domMatrixMod = (await import("dommatrix").catch(() => null)) as any;
             if (domMatrixMod) {
               (global as any).DOMMatrix = domMatrixMod.DOMMatrix ?? domMatrixMod.default ?? domMatrixMod;
             }
