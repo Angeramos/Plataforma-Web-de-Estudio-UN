@@ -1,6 +1,5 @@
 import { StudyForm } from "@/components/study-form";
 import { AuroraMascot } from "@/components/aurora-mascot";
-import { InstitutionalUploadForm } from "@/components/institutional-upload-form";
 
 export default function Home() {
   return (
@@ -63,7 +62,7 @@ export default function Home() {
 
         <StudyForm />
 
-        <InstitutionalUploadForm />
+        {/* Institutional upload removed from UI per request */}
       </div>
 
       <AuroraMascot />

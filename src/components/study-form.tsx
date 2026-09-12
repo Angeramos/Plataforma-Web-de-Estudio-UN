@@ -2,7 +2,6 @@
 
 import { FormEvent, useState } from "react";
 import type { StudyContent } from "@/lib/openai";
-import { Results } from "@/components/study-results";
 
 export function StudyForm() {
   const [text, setText] = useState("");
@@ -111,7 +110,7 @@ export function StudyForm() {
         </button>
       </form>
 
-      <Results result={result} />
+      {/* Results temporarily removed — will appear in a dedicated view later */}
     </div>
   );
 }
