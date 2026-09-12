@@ -19,8 +19,8 @@ export async function POST(request: Request) {
 
       if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
         const buffer = Buffer.from(await file.arrayBuffer());
-        const pdfParse = await import("pdf-parse");
-        const parsed = await (pdfParse.default ? pdfParse.default(buffer) : pdfParse(buffer));
+        const pdfParseModule = (await import("pdf-parse")) as any;
+        const parsed = await (typeof pdfParseModule === "function" ? pdfParseModule(buffer) : pdfParseModule.default ? pdfParseModule.default(buffer) : pdfParseModule(buffer));
         extractedText = [prompt, parsed?.text].filter(Boolean).join(" \n").trim();
       } else {
         extractedText = await file.text();
