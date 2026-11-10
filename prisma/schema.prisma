@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model chat_mensajes {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  espacio_id      String   @db.Uuid
+  rol             String
+  contenido       String
+  fuentes_citadas Json?
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  espacios        espacios @relation(fields: [espacio_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([espacio_id, created_at], map: "chat_mensajes_espacio_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model espacios {
+  id            String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id       String          @db.Uuid
+  nombre        String
+  materia       String?
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime        @default(now()) @db.Timestamptz(6)
+  chat_mensajes chat_mensajes[]
+  users         users           @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  fragmentos    fragmentos[]
+  fuentes       fuentes[]
+  generaciones  generaciones[]
+
+  @@index([user_id], map: "espacios_user_idx")
+}
+
+model fragmentos {
+  id            String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  fuente_id     String                   @db.Uuid
+  espacio_id    String                   @db.Uuid
+  orden         Int
+  contenido     String
+  metadata      Json                     @default("{}")
+  embedding     Unsupported("vector")?
+  contenido_tsv Unsupported("tsvector")? @default(dbgenerated("to_tsvector('spanish'::regconfig, contenido)"))
+  espacios      espacios                 @relation(fields: [espacio_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  fuentes       fuentes                  @relation(fields: [fuente_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([espacio_id], map: "fragmentos_espacio_idx")
+  @@index([fuente_id, orden], map: "fragmentos_fuente_idx")
+  @@index([contenido_tsv], map: "fragmentos_tsv_idx", type: Gin)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model fuentes {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  espacio_id     String       @db.Uuid
+  nombre_archivo String
+  tipo           String
+  estado         String       @default("procesando")
+  error          String?
+  created_at     DateTime     @default(now()) @db.Timestamptz(6)
+  fragmentos     fragmentos[]
+  espacios       espacios     @relation(fields: [espacio_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([espacio_id], map: "fuentes_espacio_idx")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model generaciones {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  espacio_id      String   @db.Uuid
+  tipo            String
+  contenido       Json
+  fuentes_citadas Json     @default("[]")
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+  espacios        espacios @relation(fields: [espacio_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([espacio_id, tipo, created_at(sort: Desc)], map: "generaciones_espacio_tipo_idx")
+}
+
+/// This model contains an expression index which requires additional setup for migrations. Visit https://pris.ly/d/expression-indexes for more info.
+model users {
+  id            String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email         String
+  password_hash String
+  name          String
+  created_at    DateTime   @default(now()) @db.Timestamptz(6)
+  espacios      espacios[]
+}
