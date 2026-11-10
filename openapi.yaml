@@ -1,0 +1,740 @@
+openapi: 3.0.3
+info:
+  title: Espacios API
+  version: 1.0.0
+  description: |
+    Contrato v1 del backend de la plataforma de estudio inteligente.
+    - JSON en camelCase, IDs UUID, fechas ISO 8601.
+    - Autenticación: header `Authorization: Bearer <accessToken>` (token único, sin refresh).
+    - Cada usuario solo accede a sus propios recursos; pedir un recurso ajeno devuelve 404.
+    - Sin streaming: generación y chat responden completos.
+    - Fuera del MVP: conector D2L, gamificación, analítica, podcasts.
+servers:
+  - url: http://localhost:3000/api/v1
+tags:
+  - name: Auth
+  - name: Espacios
+  - name: Fuentes
+  - name: Generaciones
+  - name: Chat
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Registrar usuario
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: Usuario creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: El correo ya está registrado (EMAIL_YA_REGISTRADO)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Iniciar sesión
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Sesión iniciada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Usuario autenticado
+      responses:
+        '200':
+          description: Datos del usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /espacios:
+    get:
+      tags: [Espacios]
+      summary: Listar espacios del usuario
+      responses:
+        '200':
+          description: Lista de espacios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/EspacioResumen'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Espacios]
+      summary: Crear espacio
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EspacioCreate'
+      responses:
+        '201':
+          description: Espacio creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EspacioResumen'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /espacios/{id}:
+    parameters:
+      - $ref: '#/components/parameters/EspacioId'
+    get:
+      tags: [Espacios]
+      summary: Detalle de un espacio con sus fuentes
+      responses:
+        '200':
+          description: Espacio con fuentes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EspacioDetalle'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Espacios]
+      summary: Editar nombre o materia
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EspacioUpdate'
+      responses:
+        '200':
+          description: Espacio actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EspacioResumen'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Espacios]
+      summary: Eliminar espacio (borrado en cascada de fuentes, fragmentos, generaciones, chat y archivos)
+      responses:
+        '204':
+          description: Eliminado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /espacios/{id}/fuentes:
+    parameters:
+      - $ref: '#/components/parameters/EspacioId'
+    get:
+      tags: [Fuentes]
+      summary: Listar fuentes de un espacio (usar para consultar el estado de procesamiento)
+      responses:
+        '200':
+          description: Lista de fuentes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Fuente'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Fuentes]
+      summary: Subir una fuente (PDF, DOCX, PPTX o TXT; máximo 4 MB, MAX_UPLOAD_MB)
+      description: |
+        Responde 202. El servidor puede terminar la ingesta dentro de la misma petición
+        (estado final `listo` o `error`) o devolver `procesando`; el frontend debe tratar
+        ambos casos y, si ve `procesando`, consultar `GET /espacios/{id}/fuentes` cada
+        2-3 s hasta que sea `listo` o `error`. El tamaño máximo efectivo lo fija el servidor
+        (variable MAX_UPLOAD_MB); superarlo devuelve 413 ARCHIVO_MUY_GRANDE.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [archivo]
+              properties:
+                archivo:
+                  type: string
+                  format: binary
+      responses:
+        '202':
+          description: Archivo recibido, en procesamiento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Fuente'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          description: Archivo mayor al límite del servidor, 4 MB (ARCHIVO_MUY_GRANDE)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '415':
+          description: Tipo de archivo no soportado (TIPO_NO_SOPORTADO)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /fuentes/{id}:
+    delete:
+      tags: [Fuentes]
+      summary: Eliminar fuente (borra sus fragmentos y el archivo original)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Eliminada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /espacios/{id}/generaciones:
+    parameters:
+      - $ref: '#/components/parameters/EspacioId'
+    get:
+      tags: [Generaciones]
+      summary: Listar generaciones guardadas del espacio
+      parameters:
+        - name: tipo
+          in: query
+          required: false
+          schema:
+            $ref: '#/components/schemas/TipoGeneracion'
+      responses:
+        '200':
+          description: Lista de generaciones
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Generacion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Generaciones]
+      summary: Generar resumen, quiz o flashcards a partir de las fuentes del espacio
+      description: Síncrono (tarda unos segundos). Usa solo fragmentos recuperados de las fuentes del espacio.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GeneracionCreate'
+      responses:
+        '201':
+          description: Generación creada y guardada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Generacion'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SinFuentesListas'
+        '429':
+          $ref: '#/components/responses/CuotaExcedida'
+        '502':
+          $ref: '#/components/responses/ErrorLlm'
+
+  /generaciones/{id}:
+    delete:
+      tags: [Generaciones]
+      summary: Eliminar una generación guardada
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Eliminada
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /espacios/{id}/chat:
+    parameters:
+      - $ref: '#/components/parameters/EspacioId'
+    get:
+      tags: [Chat]
+      summary: Historial del chat del espacio
+      responses:
+        '200':
+          description: Mensajes en orden cronológico
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ChatMensaje'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [Chat]
+      summary: Enviar un mensaje y recibir la respuesta anclada a las fuentes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mensaje]
+              properties:
+                mensaje:
+                  type: string
+                  minLength: 1
+                  maxLength: 4000
+      responses:
+        '201':
+          description: Mensaje del asistente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatMensaje'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SinFuentesListas'
+        '429':
+          $ref: '#/components/responses/CuotaExcedida'
+        '502':
+          $ref: '#/components/responses/ErrorLlm'
+    delete:
+      tags: [Chat]
+      summary: Limpiar el historial del chat
+      responses:
+        '204':
+          description: Historial eliminado
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    EspacioId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Datos inválidos (VALIDACION)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Token ausente, inválido o credenciales incorrectas (NO_AUTENTICADO)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Recurso no encontrado o ajeno (NO_ENCONTRADO)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    SinFuentesListas:
+      description: El espacio no tiene fuentes en estado listo (SIN_FUENTES_LISTAS)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    CuotaExcedida:
+      description: Se alcanzó la cuota diaria de generaciones o mensajes de chat (CUOTA_DIARIA)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    ErrorLlm:
+      description: El proveedor de IA falló o devolvió una salida inválida tras reintentar (ERROR_LLM)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [codigo, mensaje]
+          properties:
+            codigo:
+              type: string
+              example: NO_ENCONTRADO
+            mensaje:
+              type: string
+              example: El espacio no existe
+
+    RegisterRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+        name:
+          type: string
+          minLength: 1
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+
+    User:
+      type: object
+      required: [id, email, name]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [user, accessToken]
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        accessToken:
+          type: string
+
+    EspacioCreate:
+      type: object
+      required: [nombre]
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 120
+        materia:
+          type: string
+          maxLength: 120
+
+    EspacioUpdate:
+      type: object
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 120
+        materia:
+          type: string
+          maxLength: 120
+
+    EspacioResumen:
+      type: object
+      required: [id, nombre, fuentesCount, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        materia:
+          type: string
+          nullable: true
+        fuentesCount:
+          type: integer
+          minimum: 0
+        updatedAt:
+          type: string
+          format: date-time
+
+    EspacioDetalle:
+      allOf:
+        - $ref: '#/components/schemas/EspacioResumen'
+        - type: object
+          required: [fuentes]
+          properties:
+            fuentes:
+              type: array
+              items:
+                $ref: '#/components/schemas/Fuente'
+
+    TipoArchivo:
+      type: string
+      enum: [pdf, docx, pptx, txt]
+
+    EstadoFuente:
+      type: string
+      enum: [procesando, listo, error]
+
+    Fuente:
+      type: object
+      required: [id, nombreArchivo, tipo, estado]
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombreArchivo:
+          type: string
+          example: Compiladores_Tema2.pdf
+        tipo:
+          $ref: '#/components/schemas/TipoArchivo'
+        estado:
+          $ref: '#/components/schemas/EstadoFuente'
+        error:
+          type: string
+          nullable: true
+          description: Presente solo si estado es error (por ejemplo, el archivo no contiene texto extraíble)
+          example: El archivo no contiene texto extraíble
+        createdAt:
+          type: string
+          format: date-time
+
+    FuenteCitada:
+      type: object
+      required: [fuenteId, nombreArchivo]
+      properties:
+        fuenteId:
+          type: string
+          format: uuid
+        nombreArchivo:
+          type: string
+        pagina:
+          type: integer
+          nullable: true
+
+    TipoGeneracion:
+      type: string
+      enum: [resumen, quiz, flashcards]
+
+    GeneracionCreate:
+      type: object
+      required: [tipo]
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoGeneracion'
+        cantidad:
+          type: integer
+          minimum: 1
+          maximum: 20
+          description: Número de preguntas o tarjetas (ignorado en resumen)
+
+    ContenidoResumen:
+      type: object
+      required: [texto]
+      properties:
+        texto:
+          type: string
+
+    PreguntaQuiz:
+      type: object
+      required: [pregunta, opciones, correcta, explicacion, fuenteId]
+      properties:
+        pregunta:
+          type: string
+        opciones:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            type: string
+        correcta:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Índice de la opción correcta
+        explicacion:
+          type: string
+        fuenteId:
+          type: string
+          format: uuid
+
+    ContenidoQuiz:
+      type: object
+      required: [preguntas]
+      properties:
+        preguntas:
+          type: array
+          items:
+            $ref: '#/components/schemas/PreguntaQuiz'
+
+    TarjetaFlashcard:
+      type: object
+      required: [frente, reverso, fuenteId]
+      properties:
+        frente:
+          type: string
+        reverso:
+          type: string
+        fuenteId:
+          type: string
+          format: uuid
+
+    ContenidoFlashcards:
+      type: object
+      required: [tarjetas]
+      properties:
+        tarjetas:
+          type: array
+          items:
+            $ref: '#/components/schemas/TarjetaFlashcard'
+
+    Generacion:
+      type: object
+      required: [id, tipo, contenido, fuentesCitadas, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tipo:
+          $ref: '#/components/schemas/TipoGeneracion'
+        contenido:
+          description: Su forma depende de `tipo` (resumen, quiz o flashcards)
+          oneOf:
+            - $ref: '#/components/schemas/ContenidoResumen'
+            - $ref: '#/components/schemas/ContenidoQuiz'
+            - $ref: '#/components/schemas/ContenidoFlashcards'
+        fuentesCitadas:
+          type: array
+          items:
+            $ref: '#/components/schemas/FuenteCitada'
+        createdAt:
+          type: string
+          format: date-time
+
+    CitaChat:
+      allOf:
+        - $ref: '#/components/schemas/FuenteCitada'
+        - type: object
+          required: [fragmento]
+          properties:
+            fragmento:
+              type: string
+              description: Texto del fragmento que respalda la respuesta
+
+    ChatMensaje:
+      type: object
+      required: [id, rol, contenido, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        rol:
+          type: string
+          enum: [user, assistant]
+        contenido:
+          type: string
+        fuentesCitadas:
+          type: array
+          description: Solo presente cuando rol es assistant
+          items:
+            $ref: '#/components/schemas/CitaChat'
+        createdAt:
+          type: string
+          format: date-time
