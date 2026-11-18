@@ -19,9 +19,9 @@ const monoFont = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Plataforma de Estudio UN",
+  title: "NorthSpace",
   description:
-    "Una interfaz fantástica para convertir apuntes y PDFs en resúmenes, quizzes y flashcards.",
+    "Tu espacio de aprendizaje para explorar apuntes, crear resúmenes y estudiar con inteligencia artificial.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
