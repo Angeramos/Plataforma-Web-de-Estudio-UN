@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
+    "db:init": "prisma db execute --file db/init/001_schema.sql",
+    "db:check": "node scripts/check-db.mjs",
     "postinstall": "prisma generate"
   },
   "dependencies": {
