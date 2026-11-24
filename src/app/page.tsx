@@ -426,6 +426,20 @@ export default function Home() {
   }
 
   // Arma el archivo en el navegador (D-052); las librerías se cargan solo al hacer clic.
+  // Borra la generación en la BD (DELETE /generaciones/{id}) y solo entonces la quita de la lista.
+  async function eliminarGeneracion(g: Generacion) {
+    if (!token) return;
+    const nombre = `${ETIQUETA[g.tipo]} — ${activeSpace?.nombre || "Espacio"}`;
+    if (!window.confirm(`¿Eliminar «${nombre}»? Esta acción no se puede deshacer.`)) return;
+    setNotice("");
+    try {
+      await request(`/api/v1/generaciones/${g.id}`, { method: "DELETE" });
+      setGeneraciones((items) => items.filter((item) => item.id !== g.id));
+    } catch (error) {
+      setNotice(error instanceof Error ? `No fue posible eliminar el material: ${error.message}` : "No fue posible eliminar el material");
+    }
+  }
+
   async function exportar(g: Generacion, ext: "pdf" | "docx") {
     const espacio = activeSpace?.nombre || "Espacio";
     setBusy(`export-${g.id}`);
@@ -661,6 +675,7 @@ export default function Home() {
             <div className="results-list">
               {generaciones.map((item) => (
                 <article className="file-card" key={item.id}>
+                  <button className="file-delete" onClick={() => eliminarGeneracion(item)} disabled={!!busy} aria-label={`Eliminar ${ETIQUETA[item.tipo]}`}>×</button>
                   <span className="file-icon">{icons.document}</span>
                   <span className="file-info">
                     <strong className="file-name">{ETIQUETA[item.tipo]} — {activeSpace?.nombre || "Espacio"}</strong>

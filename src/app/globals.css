@@ -855,11 +855,11 @@ svg {
 .citations span { border-radius: 10px; background: #eef4f2; color: #71858a; padding: 3px 7px; font-size: 8px; }
 .notice { margin: 0 0 8px; border: 1px solid rgba(185,149,89,.22); border-radius: 8px; background: #fdfaf1; color: #8d7650; padding: 7px 9px; font-size: 9.5px; }
 .results-list { flex: 1; min-height: 180px; overflow-y: auto; }
-.file-card { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 4px 8px; align-items: center; border: 1px solid rgba(112,132,143,.11); border-radius: 10px; background: rgba(255,255,255,.68); margin-top: 8px; padding: 9px; }
+.file-card { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 4px 8px; align-items: center; border: 1px solid rgba(112,132,143,.11); border-radius: 10px; background: rgba(255,255,255,.68); margin-top: 8px; padding: 9px; }
 .file-icon { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: rgba(176,141,86,.1); color: #b08d56; }
 .file-icon svg { width: 16px; height: 16px; }
 .file-info { display: flex; flex-direction: column; min-width: 0; }
-.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+.file-name { padding-right: 16px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
 .file-meta { color: #697789; font-size: 9px; margin-top: 2px; }
 .file-actions { grid-column: 2; display: flex; gap: 6px; margin-top: 4px; }
 .file-actions button { min-width: 52px; height: 24px; border: 1px solid rgba(121,174,178,.55); border-radius: 7px; background: #fff; color: #4d8d99; font-size: 9.5px; font-weight: 600; }
@@ -918,3 +918,8 @@ svg {
 .flashcard-nav button { width: 34px; height: 30px; border: 1px solid rgba(121,174,178,.55); border-radius: 8px; background: #fff; color: #4d8d99; }
 .flashcard-nav button:disabled { opacity: .4; cursor: default; }
 .flashcards-empty { color: #697789; font-size: 11px; }
+
+/* Eliminar un material del Estudio */
+.file-delete { position: absolute; top: 4px; right: 6px; width: 18px; height: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent; color: #abb2b5; font-size: 15px; line-height: 1; }
+.file-delete:hover:not(:disabled) { background: rgba(188,116,116,.1); color: #bc7474; }
+.file-delete:disabled { opacity: .4; cursor: default; }
