@@ -624,6 +624,16 @@ components:
           minimum: 1
           maximum: 20
           description: Número de preguntas o tarjetas (ignorado en resumen)
+        fuenteIds:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            type: string
+            format: uuid
+          description: >-
+            Fuentes del espacio a partir de las cuales se genera (D-053). Si se omite, se usan todas
+            las fuentes `listo`. Un id que no sea fuente `listo` del espacio responde 400 `VALIDACION`.
 
     ContenidoResumen:
       type: object
