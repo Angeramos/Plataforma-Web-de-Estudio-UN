@@ -9,9 +9,14 @@ function celda(texto: string, negrita = false) {
   });
 }
 
+// Word muestra un "\n" dentro del texto como espacio: cada línea va en su propio run con un salto real (<w:br/>).
+function lineas(texto: string) {
+  return texto.split("\n").map((linea, i) => new TextRun({ text: linea, break: i > 0 ? 1 : undefined }));
+}
+
 function convertir(bloque: Bloque): Array<Paragraph | Table> {
   if (bloque.tipo === "seccion") return [new Paragraph({ text: bloque.texto, heading: HeadingLevel.HEADING_2 })];
-  if (bloque.tipo === "parrafo") return [new Paragraph({ text: bloque.texto, spacing: { after: 160 } })];
+  if (bloque.tipo === "parrafo") return [new Paragraph({ children: lineas(bloque.texto), spacing: { after: 160 } })];
   if (bloque.tipo === "lista") {
     const titulo = bloque.titulo ? [new Paragraph({ children: [new TextRun({ text: bloque.titulo, bold: true })], spacing: { after: 40 } })] : [];
     return [

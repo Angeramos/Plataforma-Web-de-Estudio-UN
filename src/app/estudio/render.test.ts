@@ -46,6 +46,17 @@ describe("crearPdf", () => {
 });
 
 describe("crearWord", () => {
+  it("convierte los saltos de línea de un párrafo en saltos reales de Word", async () => {
+    const JSZip = (await import("jszip")).default;
+    const conViñetas: Documento = { ...doc, bloques: [{ tipo: "parrafo", texto: "- Primera idea\n- Segunda idea\n- Tercera idea" }] };
+    const zip = await JSZip.loadAsync(await bytes(await crearWord(conViñetas)));
+    const xml = await zip.file("word/document.xml")!.async("string");
+    const parrafo = xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g)!.find((p) => p.includes("Primera idea"))!;
+    expect(parrafo).not.toContain("\n");
+    expect(parrafo.match(/<w:br\/>/g)?.length).toBe(2);
+    expect(parrafo).toContain("Tercera idea");
+  });
+
   it("produce un .docx (ZIP)", async () => {
     const b = await bytes(await crearWord(doc));
     expect(b.length).toBeGreaterThan(0);

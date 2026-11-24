@@ -358,9 +358,23 @@ svg {
   font-size: 10px;
 }
 
-.user-row div:last-child {
+.user-row > div:not(.avatar) {
   display: flex;
   flex-direction: column;
+  flex: 1;
+  min-width: 0; /* deja encoger el bloque para que Borrar y Salir no se salgan del panel */
+}
+
+.user-row > div:not(.avatar) strong,
+.user-row > div:not(.avatar) span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-row .avatar,
+.user-row .logout-button {
+  flex-shrink: 0;
 }
 
 .user-row strong {
