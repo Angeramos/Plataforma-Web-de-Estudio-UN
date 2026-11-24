@@ -10,9 +10,14 @@ import { promptGeneracion, type TipoGeneracion } from "@/server/llm/prompts";
 import { salidaFlashcards, salidaQuiz, salidaResumen } from "@/server/llm/schemas";
 import { citarGeneracion } from "@/server/rag/citas";
 import { armarContexto } from "@/server/rag/context";
+import { validarSeleccion } from "./seleccion";
 
 const tipo = z.enum(["resumen", "quiz", "flashcards"]);
-export const generacionCreateSchema = z.object({ tipo, cantidad: z.number().int().min(1).max(20).optional() });
+export const generacionCreateSchema = z.object({
+  tipo,
+  cantidad: z.number().int().min(1).max(20).optional(),
+  fuenteIds: z.array(z.uuid()).min(1).max(100).optional(), // D-053: sin el campo se usan todas las fuentes listas
+});
 export const tipoQuerySchema = tipo.optional();
 
 const CANTIDAD_POR_DEFECTO: Record<TipoGeneracion, number> = { resumen: 0, quiz: 5, flashcards: 10 };
@@ -25,12 +30,17 @@ const toGeneracionDto = (g: generaciones) => ({
   createdAt: g.created_at.toISOString(),
 });
 
-// Spec §4.4. Síncrono: contexto de todas las fuentes `listo` → LLM → validar → citas → guardar.
+// Spec §4.4. Síncrono: contexto de las fuentes `listo` (todas o las elegidas, D-053) → LLM → validar → citas → guardar.
 export async function generar(userId: string, espacioId: string, input: z.infer<typeof generacionCreateSchema>) {
   await exigirEspacio(userId, espacioId);
+  let seleccion: string[] | undefined;
+  if (input.fuenteIds) {
+    const listas = await db().fuentes.findMany({ where: { espacio_id: espacioId, estado: "listo" }, select: { id: true } });
+    seleccion = validarSeleccion(input.fuenteIds, listas.map((f) => f.id));
+  }
   // shortcut: carga todos los fragmentos del espacio (a escala de MVP son pocos MB); muestrear en SQL si crece.
   const frags = await db().fragmentos.findMany({
-    where: { espacio_id: espacioId, fuentes: { estado: "listo" } },
+    where: { espacio_id: espacioId, fuentes: { estado: "listo" }, ...(seleccion ? { fuente_id: { in: seleccion } } : {}) },
     select: { fuente_id: true, orden: true, contenido: true, fuentes: { select: { nombre_archivo: true } } },
     orderBy: [{ fuentes: { created_at: "asc" } }, { orden: "asc" }],
   });

@@ -1,6 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { descargarBlob } from "./estudio/descarga";
+import { armarDocumento, detalleCorto, ETIQUETA, nombreArchivo, type Generacion } from "./estudio/exportar";
+import Tarjetas from "./estudio/Tarjetas";
 
 type User = { id: string; email: string; name: string };
 type Espacio = { id: string; nombre: string; materia?: string | null; fuentesCount: number; updatedAt: string };
@@ -14,17 +17,6 @@ type Fuente = {
 };
 type Cita = { fuenteId: string; nombreArchivo: string; pagina?: number | null; fragmento: string };
 type ChatMensaje = { id: string; rol: "user" | "assistant"; contenido: string; fuentesCitadas?: Cita[]; createdAt: string };
-type Generacion = {
-  id: string;
-  tipo: "resumen" | "quiz" | "flashcards";
-  contenido: {
-    texto?: string;
-    preguntas?: Array<{ pregunta: string; opciones: string[]; correcta: number; explicacion: string; fuenteId: string }>;
-    tarjetas?: Array<{ frente: string; reverso: string; fuenteId: string }>;
-  };
-  fuentesCitadas: Array<{ fuenteId: string; nombreArchivo: string; pagina?: number | null }>;
-  createdAt: string;
-};
 
 const icons = {
   compass: (
@@ -69,6 +61,10 @@ const authStorage = {
   user: "northspace_user",
 };
 
+// Mismo valor por defecto que MAX_UPLOAD_MB del backend; el servidor lo vuelve a validar.
+const MAX_UPLOAD_MB = 4;
+const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
+
 export default function Home() {
   const [token, setToken] = useState("");
   const [user, setUser] = useState<User | null>(null);
@@ -93,11 +89,29 @@ export default function Home() {
   const [notice, setNotice] = useState("");
 
   const [newSpaceOpen, setNewSpaceOpen] = useState(false);
+  const [repaso, setRepaso] = useState<Generacion | null>(null);
   const [spaceName, setSpaceName] = useState("");
   const [spaceMateria, setSpaceMateria] = useState("");
 
   const fileRef = useRef<HTMLInputElement>(null);
   const activeSpace = espacios.find((item) => item.id === activeId);
+
+  // Fuentes desmarcadas por espacio (D-053): así toda fuente nueva entra marcada y cada espacio guarda su selección.
+  const [excluidasPorEspacio, setExcluidasPorEspacio] = useState<Record<string, string[]>>({});
+  const excluidas = excluidasPorEspacio[activeId] ?? [];
+  const fuentesListas = fuentes.filter((item) => item.estado === "listo");
+  const seleccionadas = fuentesListas.filter((item) => !excluidas.includes(item.id));
+
+  function toggleFuente(id: string) {
+    setExcluidasPorEspacio((prev) => {
+      const actuales = prev[activeId] ?? [];
+      return { ...prev, [activeId]: actuales.includes(id) ? actuales.filter((x) => x !== id) : [...actuales, id] };
+    });
+  }
+
+  function marcarTodas(marcar: boolean) {
+    setExcluidasPorEspacio((prev) => ({ ...prev, [activeId]: marcar ? [] : fuentesListas.map((item) => item.id) }));
+  }
 
   async function request(path: string, options: RequestInit = {}, forceToken?: string) {
     const sessionToken = forceToken ?? token;
@@ -144,6 +158,9 @@ export default function Home() {
     setEspacios(data);
     if (!data.length) {
       setActiveId("");
+      setFuentes([]);
+      setMensajes([]);
+      setGeneraciones([]);
       return;
     }
     if (preferredId && data.some((item) => item.id === preferredId)) {
@@ -153,8 +170,8 @@ export default function Home() {
     setActiveId((current) => (data.some((item) => item.id === current) ? current : data[0].id));
   }
 
-  async function loadSpaceDetails(spaceId: string) {
-    const [detail, chat, generations] = (await Promise.all([
+  async function fetchSpaceDetails(spaceId: string) {
+    return (await Promise.all([
       request(`/api/v1/espacios/${spaceId}`),
       request(`/api/v1/espacios/${spaceId}/chat`),
       request(`/api/v1/espacios/${spaceId}/generaciones`),
@@ -163,57 +180,69 @@ export default function Home() {
       ChatMensaje[],
       Generacion[],
     ];
+  }
+
+  function applySpaceDetails([detail, chat, generations]: Awaited<ReturnType<typeof fetchSpaceDetails>>) {
     setFuentes(detail.fuentes || []);
     setMensajes(chat || []);
     setGeneraciones(generations || []);
   }
 
+  async function loadSpaceDetails(spaceId: string) {
+    applySpaceDetails(await fetchSpaceDetails(spaceId));
+  }
+
+  // Effect events (React 19.2): leen siempre el estado más reciente sin ser dependencias de los efectos.
+  // Los setState de los efectos van dentro de callbacks de promesas, no en el cuerpo del efecto.
+  const restoreSession = useEffectEvent(async () => {
+    const savedToken = localStorage.getItem(authStorage.token) || "";
+    const savedUserRaw = localStorage.getItem(authStorage.user);
+    if (!savedToken || !savedUserRaw) return null;
+    const me = (await request("/api/v1/auth/me", {}, savedToken)) as User;
+    return { token: savedToken, user: me };
+  });
+  const startSession = useEffectEvent(async (sessionToken: string, sessionUser: User) => {
+    persistSession(sessionToken, sessionUser);
+    await loadEspacios(sessionToken);
+  });
+  const expireSession = useEffectEvent(() => logout(true));
+  const fetchFuentes = useEffectEvent((spaceId: string) => request(`/api/v1/espacios/${spaceId}/fuentes`));
+  const fetchActiveSpace = useEffectEvent((spaceId: string) => fetchSpaceDetails(spaceId));
+  const showActiveSpace = useEffectEvent(applySpaceDetails);
+
   useEffect(() => {
     let cancelled = false;
-    async function bootstrap() {
-      const savedToken = localStorage.getItem(authStorage.token) || "";
-      const savedUserRaw = localStorage.getItem(authStorage.user);
-      if (!savedToken || !savedUserRaw) {
-        if (!cancelled) {
+    restoreSession()
+      .then(async (session) => {
+        if (cancelled) return;
+        if (!session) {
           setAuthOpen(true);
-          setBooting(false);
+          return;
         }
-        return;
-      }
-      try {
-        const me = (await request("/api/v1/auth/me", {}, savedToken)) as User;
-        if (cancelled) return;
-        persistSession(savedToken, me);
-        await loadEspacios(savedToken);
-      } catch {
-        if (cancelled) return;
-        logout(true);
-      } finally {
+        await startSession(session.token, session.user);
+      })
+      .catch(() => {
+        if (!cancelled) expireSession();
+      })
+      .finally(() => {
         if (!cancelled) setBooting(false);
-      }
-    }
-    bootstrap();
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // Al cerrar sesión o quedarse sin espacios, logout() y loadEspacios() ya vacían fuentes, chat y generaciones.
   useEffect(() => {
-    if (!token || !activeId) {
-      setFuentes([]);
-      setMensajes([]);
-      setGeneraciones([]);
-      return;
-    }
+    if (!token || !activeId) return;
     let cancelled = false;
-    async function load() {
-      try {
-        await loadSpaceDetails(activeId);
-      } catch (error) {
-        if (!cancelled) setNotice(error instanceof Error ? error.message : "No fue posible cargar el cuaderno");
-      }
-    }
-    load();
+    fetchActiveSpace(activeId)
+      .then((details) => {
+        if (!cancelled) showActiveSpace(details);
+      })
+      .catch((error) => {
+        if (!cancelled) setNotice(error instanceof Error ? error.message : "No fue posible cargar el espacio");
+      });
     return () => {
       cancelled = true;
     };
@@ -222,7 +251,7 @@ export default function Home() {
   useEffect(() => {
     if (!token || !activeId || !fuentes.some((item) => item.estado === "procesando")) return;
     const id = window.setInterval(() => {
-      request(`/api/v1/espacios/${activeId}/fuentes`)
+      fetchFuentes(activeId)
         .then((rows) => setFuentes((rows as Fuente[]) || []))
         .catch(() => {
           window.clearInterval(id);
@@ -275,7 +304,7 @@ export default function Home() {
       setSpaceMateria("");
       await loadEspacios(undefined, created.id);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No fue posible crear el cuaderno");
+      setNotice(error instanceof Error ? error.message : "No fue posible crear el espacio");
     } finally {
       setBusy("");
     }
@@ -283,7 +312,7 @@ export default function Home() {
 
   async function renameActiveSpace() {
     if (!activeSpace || !token) return;
-    const nombre = window.prompt("Nuevo nombre del cuaderno", activeSpace.nombre)?.trim();
+    const nombre = window.prompt("Nuevo nombre del espacio", activeSpace.nombre)?.trim();
     if (!nombre) return;
     const materia = window.prompt("Materia (deja vacío para quitarla)", activeSpace.materia || "") ?? "";
     try {
@@ -294,19 +323,19 @@ export default function Home() {
       await loadEspacios(undefined, activeSpace.id);
       await loadSpaceDetails(activeSpace.id);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No fue posible editar el cuaderno");
+      setNotice(error instanceof Error ? error.message : "No fue posible editar el espacio");
     }
   }
 
   async function deleteActiveSpace() {
     if (!activeSpace || !token) return;
-    const ok = window.confirm(`¿Eliminar el cuaderno \"${activeSpace.nombre}\"? Esta acción no se puede deshacer.`);
+    const ok = window.confirm(`¿Eliminar el espacio \"${activeSpace.nombre}\"? Esta acción no se puede deshacer.`);
     if (!ok) return;
     try {
       await request(`/api/v1/espacios/${activeSpace.id}`, { method: "DELETE" });
       await loadEspacios();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "No fue posible eliminar el cuaderno");
+      setNotice(error instanceof Error ? error.message : "No fue posible eliminar el espacio");
     }
   }
 
@@ -314,14 +343,27 @@ export default function Home() {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (!activeId || !files.length || !token) return;
-    setBusy("Subiendo");
+    // Vercel corta cuerpos > 4.5 MB con un 413 que no es JSON: se avisa antes de subir (D-023).
+    const tooBig = files.filter((file) => file.size > MAX_UPLOAD_BYTES);
+    const toUpload = files.filter((file) => file.size <= MAX_UPLOAD_BYTES);
+    const problems = tooBig.map((file) => `"${file.name}" pesa más de ${MAX_UPLOAD_MB} MB`);
     setNotice("");
+    if (!toUpload.length) {
+      setNotice(`${problems.join(". ")}. Divide el archivo o comprímelo e inténtalo de nuevo.`);
+      return;
+    }
+    setBusy("Subiendo");
     try {
-      for (const file of files) {
+      for (const file of toUpload) {
         const form = new FormData();
         form.append("archivo", file);
-        await request(`/api/v1/espacios/${activeId}/fuentes`, { method: "POST", body: form });
+        try {
+          await request(`/api/v1/espacios/${activeId}/fuentes`, { method: "POST", body: form });
+        } catch (error) {
+          problems.push(`"${file.name}": ${error instanceof Error ? error.message : "no se pudo subir"}`);
+        }
       }
+      if (problems.length) setNotice(`No se subió todo. ${problems.join(". ")}.`);
       const updated = (await request(`/api/v1/espacios/${activeId}/fuentes`)) as Fuente[];
       setFuentes(updated || []);
       await loadEspacios(undefined, activeId);
@@ -383,14 +425,34 @@ export default function Home() {
     }
   }
 
+  // Arma el archivo en el navegador (D-052); las librerías se cargan solo al hacer clic.
+  async function exportar(g: Generacion, ext: "pdf" | "docx") {
+    const espacio = activeSpace?.nombre || "Espacio";
+    setBusy(`export-${g.id}`);
+    setNotice("");
+    try {
+      const documento = armarDocumento(g, espacio, fuentes);
+      const blob = ext === "pdf"
+        ? await (await import("./estudio/pdf")).crearPdf(documento)
+        : await (await import("./estudio/word")).crearWord(documento);
+      descargarBlob(blob, nombreArchivo(g, espacio, ext));
+    } catch {
+      setNotice("No fue posible crear el archivo");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function generate(type: "resumen" | "quiz" | "flashcards") {
-    if (!activeId || !token) return;
+    if (!activeId || !token || !seleccionadas.length) return;
+    // Sin fuentes desmarcadas no se envía fuenteIds: el backend usa todas las listas.
+    const fuenteIds = seleccionadas.length < fuentesListas.length ? seleccionadas.map((item) => item.id) : undefined;
     setBusy(type);
     setNotice("");
     try {
       const item = (await request(`/api/v1/espacios/${activeId}/generaciones`, {
         method: "POST",
-        body: JSON.stringify({ tipo: type, cantidad: type === "quiz" ? 5 : type === "flashcards" ? 10 : undefined }),
+        body: JSON.stringify({ tipo: type, cantidad: type === "quiz" ? 5 : type === "flashcards" ? 10 : undefined, fuenteIds }),
       })) as Generacion;
       setGeneraciones((items) => [item, ...items]);
       await loadEspacios(undefined, activeId);
@@ -424,10 +486,10 @@ export default function Home() {
         </div>
 
         <div className="panel-heading">
-          <span>Mis cuadernos</span>
+          <span>Mis espacios</span>
           <div className="space-controls">
-            <button className="icon-button" aria-label="Editar cuaderno" onClick={renameActiveSpace} disabled={!activeSpace}>{icons.sliders}</button>
-            <button className="icon-button" aria-label="Nuevo cuaderno" onClick={() => setNewSpaceOpen(true)}>{icons.plus}</button>
+            <button className="icon-button" aria-label="Editar espacio" onClick={renameActiveSpace} disabled={!activeSpace}>{icons.sliders}</button>
+            <button className="icon-button" aria-label="Nuevo espacio" onClick={() => setNewSpaceOpen(true)}>{icons.plus}</button>
           </div>
         </div>
 
@@ -441,11 +503,16 @@ export default function Home() {
               </span>
             </button>
           ))}
-          {!espacios.length && <button className="empty-space" onClick={() => setNewSpaceOpen(true)}>+ Crear tu primer cuaderno</button>}
+          {!espacios.length && <button className="empty-space" onClick={() => setNewSpaceOpen(true)}>+ Crear tu primer espacio</button>}
         </div>
 
         <div className="panel-heading sources-heading">
           <span>Fuentes</span>
+          {fuentesListas.length > 1 && (
+            <button className="select-all" onClick={() => marcarTodas(seleccionadas.length < fuentesListas.length)}>
+              {seleccionadas.length < fuentesListas.length ? "Marcar todas" : "Desmarcar todas"}
+            </button>
+          )}
           <button className="icon-button" aria-label="Añadir fuente" onClick={() => fileRef.current?.click()} disabled={!activeId}>{icons.plus}</button>
         </div>
         <input ref={fileRef} className="hidden-input" type="file" accept=".pdf,.docx,.pptx,.txt" multiple onChange={uploadFiles} />
@@ -454,6 +521,14 @@ export default function Home() {
           <div className="source-list">
             {fuentes.map((source) => (
               <div className="source-item" key={source.id}>
+                <input
+                  type="checkbox"
+                  className="source-check"
+                  aria-label={`Usar ${source.nombreArchivo} en el Estudio`}
+                  checked={source.estado === "listo" && !excluidas.includes(source.id)}
+                  disabled={source.estado !== "listo"}
+                  onChange={() => toggleFuente(source.id)}
+                />
                 <span className="source-type">{source.tipo.toUpperCase()}</span>
                 <span className="source-info">
                   <strong>{source.nombreArchivo}</strong>
@@ -469,7 +544,7 @@ export default function Home() {
           <div className="source-empty">
             <span className="empty-orbit"><span>{icons.document}</span></span>
             <p><strong>Tus fuentes aparecerán aquí</strong></p>
-            <p>Añade archivos PDF, DOCX, PPTX o TXT para comenzar.</p>
+            <p>Añade archivos PDF, DOCX, PPTX o TXT (máximo {MAX_UPLOAD_MB} MB cada uno) para comenzar.</p>
           </div>
         )}
 
@@ -491,12 +566,12 @@ export default function Home() {
       <section className="workspace">
         <header className="workspace-header">
           <div>
-            <span className="eyebrow">{activeSpace?.materia || "CUADERNO ACTIVO"}</span>
+            <span className="eyebrow">{activeSpace?.materia || "ESPACIO ACTIVO"}</span>
             <h1>{activeSpace?.nombre || "Mi viaje de aprendizaje"}</h1>
           </div>
           <div className="header-actions">
             <button className="header-icon" aria-label="Buscar">{icons.search}</button>
-            <button className="new-notebook" onClick={() => setNewSpaceOpen(true)}><span>{icons.plus}</span> Nuevo cuaderno</button>
+            <button className="new-notebook" onClick={() => setNewSpaceOpen(true)}><span>{icons.plus}</span> Nuevo espacio</button>
             <div className="profile-avatar">{initials}</div>
           </div>
         </header>
@@ -519,7 +594,7 @@ export default function Home() {
                 <p>
                   {fuentes.some((item) => item.estado === "listo")
                     ? "Tus fuentes están listas. Pregunta lo que quieras aprender."
-                    : "Crea un cuaderno y añade tus fuentes para comenzar."}
+                    : "Crea un espacio y añade tus fuentes para comenzar."}
                 </p>
               </div>
             ) : (
@@ -548,7 +623,7 @@ export default function Home() {
               <textarea
                 value={prompt}
                 onChange={(event) => setPrompt(event.target.value)}
-                placeholder={activeId ? "Pregunta algo a tu cuaderno..." : "Primero crea o selecciona un cuaderno..."}
+                placeholder={activeId ? "Pregunta algo a tu espacio..." : "Primero crea o selecciona un espacio..."}
                 aria-label="Pregunta a NorthSpace"
                 maxLength={4000}
                 disabled={!activeId || busy === "Chat"}
@@ -568,21 +643,45 @@ export default function Home() {
               <div><span className="eyebrow">ESTUDIO</span><h2>Crear conocimiento</h2></div>
               <button className="icon-button" aria-label="Opciones">{icons.sliders}</button>
             </div>
+            {fuentesListas.length > 0 && (
+              <p className={`studio-sources ${seleccionadas.length ? "" : "studio-sources-empty"}`}>
+                {seleccionadas.length
+                  ? `Usando ${seleccionadas.length} de ${fuentesListas.length} ${fuentesListas.length === 1 ? "fuente" : "fuentes"}`
+                  : "Marca al menos una fuente para generar"}
+              </p>
+            )}
 
             <div className="studio-grid">
-              <button className="studio-card" onClick={() => generate("resumen")} disabled={!!busy || !activeId}><span className="tool-glyph">▱</span><span><strong>Resumen escrito</strong><small>{busy === "resumen" ? "Generando..." : "Ideas clave"}</small></span></button>
-              <button className="studio-card" onClick={() => generate("flashcards")} disabled={!!busy || !activeId}><span className="tool-glyph glyph-1">▧</span><span><strong>Tarjetas didácticas</strong><small>{busy === "flashcards" ? "Generando..." : "Memoria"}</small></span></button>
-              <button className="studio-card" onClick={() => generate("quiz")} disabled={!!busy || !activeId}><span className="tool-glyph glyph-2">?</span><span><strong>Cuestionario</strong><small>{busy === "quiz" ? "Generando..." : "Práctica"}</small></span></button>
+              <button className="studio-card" onClick={() => generate("resumen")} disabled={!!busy || !activeId || !seleccionadas.length}><span className="tool-glyph">▱</span><span><strong>Resumen escrito</strong><small>{busy === "resumen" ? "Generando..." : "Ideas clave"}</small></span></button>
+              <button className="studio-card" onClick={() => generate("flashcards")} disabled={!!busy || !activeId || !seleccionadas.length}><span className="tool-glyph glyph-1">▧</span><span><strong>Tarjetas didácticas</strong><small>{busy === "flashcards" ? "Generando..." : "Memoria"}</small></span></button>
+              <button className="studio-card" onClick={() => generate("quiz")} disabled={!!busy || !activeId || !seleccionadas.length}><span className="tool-glyph glyph-2">?</span><span><strong>Cuestionario</strong><small>{busy === "quiz" ? "Generando..." : "Práctica"}</small></span></button>
               <button className="studio-card" disabled><span className="tool-glyph glyph-3">≡</span><span><strong>Tabla de datos</strong><small>Próximamente</small></span></button>
             </div>
 
             <div className="results-list">
               {generaciones.map((item) => (
-                <article className="result-card" key={item.id}>
-                  <span className="result-type">{item.tipo}</span>
-                  {item.tipo === "resumen" && <p>{item.contenido?.texto}</p>}
-                  {item.tipo === "quiz" && <p>{item.contenido?.preguntas?.length || 0} preguntas listas para practicar</p>}
-                  {item.tipo === "flashcards" && <p>{item.contenido?.tarjetas?.length || 0} tarjetas creadas</p>}
+                <article className="file-card" key={item.id}>
+                  <span className="file-icon">{icons.document}</span>
+                  <span className="file-info">
+                    <strong className="file-name">{ETIQUETA[item.tipo]} — {activeSpace?.nombre || "Espacio"}</strong>
+                    <small className="file-meta">
+                      {new Date(item.createdAt).toLocaleString("es-CO", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {detalleCorto(item)}
+                    </small>
+                  </span>
+                  <span className="file-actions">
+                    {item.tipo === "flashcards" ? (
+                      <button onClick={() => setRepaso(item)} aria-label={`Repasar ${ETIQUETA[item.tipo]}`}>Repasar</button>
+                    ) : (
+                      <>
+                    <button onClick={() => exportar(item, "pdf")} disabled={!!busy} aria-label={`Descargar ${ETIQUETA[item.tipo]} en PDF`}>
+                      {busy === `export-${item.id}` ? "···" : "PDF"}
+                    </button>
+                    <button onClick={() => exportar(item, "docx")} disabled={!!busy} aria-label={`Descargar ${ETIQUETA[item.tipo]} en Word`}>
+                      Word
+                    </button>
+                      </>
+                    )}
+                  </span>
                 </article>
               ))}
               {!generaciones.length && <div className="studio-empty"><div className="crystal">◆</div><p>Los resultados de estudio aparecerán aquí.</p></div>}
@@ -591,12 +690,21 @@ export default function Home() {
         </div>
       </section>
 
+      {repaso && (
+        <Tarjetas
+          generacion={repaso}
+          titulo={`${ETIQUETA[repaso.tipo]} — ${activeSpace?.nombre || "Espacio"}`}
+          fuentes={fuentes}
+          onClose={() => setRepaso(null)}
+        />
+      )}
+
       {newSpaceOpen && (
         <div className="modal-backdrop">
           <form className="auth-card space-modal" onSubmit={createSpace}>
             <button type="button" className="modal-close" onClick={() => setNewSpaceOpen(false)}>×</button>
             <span className="auth-mark">✦</span>
-            <span className="welcome-kicker">NUEVO CUADERNO</span>
+            <span className="welcome-kicker">NUEVO ESPACIO</span>
             <h2>¿Qué vas a explorar?</h2>
             <label>
               Nombre
@@ -607,7 +715,7 @@ export default function Home() {
               <input value={spaceMateria} onChange={(event) => setSpaceMateria(event.target.value)} maxLength={120} placeholder="Ej. Ingeniería de Sistemas" />
             </label>
             {notice && <div className="auth-error">{notice}</div>}
-            <button className="auth-submit" type="submit" disabled={busy === "Espacio"}>{busy === "Espacio" ? "Creando..." : "Crear cuaderno"}</button>
+            <button className="auth-submit" type="submit" disabled={busy === "Espacio"}>{busy === "Espacio" ? "Creando..." : "Crear espacio"}</button>
           </form>
         </div>
       )}
@@ -634,7 +742,7 @@ export default function Home() {
             </label>
             {authError && <div className="auth-error">{authError}</div>}
             <button className="auth-submit" type="submit" disabled={authLoading}>
-              {authLoading ? "Abriendo el cuaderno..." : authMode === "login" ? "Iniciar sesión" : "Crear cuenta"}
+              {authLoading ? "Abriendo tu espacio..." : authMode === "login" ? "Iniciar sesión" : "Crear cuenta"}
             </button>
             <button type="button" className="auth-switch" onClick={() => { setAuthMode(authMode === "login" ? "register" : "login"); setAuthError(""); }}>
               {authMode === "login" ? "¿Nuevo aquí? Crea una cuenta" : "Ya tengo una cuenta"}
